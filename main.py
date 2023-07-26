@@ -140,7 +140,7 @@ def get_patching_event(event, logger):
 def is_before_schedule(muting_rule_id, start, logger):
     is_early = False
 
-    # Special handling for Neighborly events
+    # Special handling for certain Neighborly events
     if muting_rule_id in [38495968, 38496605]:
         now = datetime.now() + timedelta(hours=1.0)
         now_converted = datetime.strftime(now + timedelta(hours=1.0), '%Y-%m-%dT%H:%M:%S')
@@ -151,10 +151,10 @@ def is_before_schedule(muting_rule_id, start, logger):
         start_dt = datetime.strptime(start, '%Y-%m-%dT%H:%M:%S-06:00')
 
     if now < start_dt:
-        logger.info('Event start is earlier than scheduled start. Enabling muting...')
+        logger.info('Event start is earlier than scheduled start.')
         is_early = True
     else:
-        logger.info('Event start is earlier than scheduled start.')
+        logger.info('Event start is later than scheduled start.')
 
     return is_early, now_converted
 
