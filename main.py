@@ -289,13 +289,19 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                                 messages.append(message)
                                 continue
                             continue
+                        elif event_status == 'Event In Progress' and not is_early:
+                            message = f'{client_name} {environment} patching event has started after muting rule ' \
+                                      f'{muting_rule_id} scheduled start; no action taken.'
+                            logger.info(f'{message}')
+                            messages.append(message)
+                            continue
                         elif event_status == 'Event Complete' and not is_enabled:
                             message = f'Muting rule {muting_rule_id} for {client_name} {environment} is already ' \
                                       f'disabled; no action taken.'
                             logger.info(f'{message}')
                             messages.append(message)
                             continue
-                        else:
+                        elif event_status == 'Event Complete' and is_enabled:
                             nr_gql_disable_fmtd = nr_gql_disable_template.substitute(
                                 {'account_id': nr_account_num,
                                  'rule_id': muting_rule_id,
@@ -316,6 +322,12 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                                 logger.warning(f'{message}')
                                 messages.append(message)
                                 continue
+                        else:
+                            message = f'Something strange happened with {muting_rule_id} for ' \
+                                      f'{event_status} --> {client_name} {environment}: {nr_response}'
+                            logger.warning(f'{message}')
+                            messages.append(message)
+                            continue
         return 0, messages
     except Exception as e:
         message = f'There was a general error: {e}'
