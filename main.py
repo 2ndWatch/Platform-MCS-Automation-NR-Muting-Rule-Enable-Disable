@@ -7,6 +7,7 @@ import logging
 import sys
 import io
 import requests
+from datetime import datetime, timedelta
 
 session = boto3.Session()
 s3 = session.client('s3')
@@ -136,7 +137,29 @@ def get_patching_event(event, logger):
             return monday_item
 
 
-def disable_muting_rule(monday_item, muting_df, logger):
+def is_before_schedule(muting_rule_id, start, logger):
+    is_early = False
+
+    # Special handling for Neighborly events
+    if muting_rule_id in [38495968, 38496605]:
+        now = datetime.now() + timedelta(hours=1.0)
+        now_converted = datetime.strftime(now + timedelta(hours=1.0), '%Y-%m-%dT%H:%M:%S')
+        start_dt = datetime.strptime(start, '%Y-%m-%dT%H:%M:%S-06:00') + timedelta(hours=1.0)
+    else:
+        now = datetime.now()
+        now_converted = datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')
+        start_dt = datetime.strptime(start, '%Y-%m-%dT%H:%M:%S-06:00')
+
+    if now < start_dt:
+        logger.info('Event start is earlier than scheduled start. Enabling muting...')
+        is_early = True
+    else:
+        logger.info('Event start is earlier than scheduled start.')
+
+    return is_early, now_converted
+
+
+def change_muting_rule_status(monday_item, muting_df, logger):
     logger.info('Processing patching events...')
     messages = []
 
@@ -156,11 +179,23 @@ def disable_muting_rule(monday_item, muting_df, logger):
                         mutingRule(id: $rule_id) {
                           id
                           enabled
+                          schedule {
+                            startTime
+                          }
                         }
                       }
                     }
                   }
                 }
+            """)
+        nr_gql_enable_template = Template("""
+            mutation {
+              alertsMutingRuleUpdate(
+                accountId: $account_id
+                id: $rule_id
+                rule: {schedule: {startTime: "$start_time"}, enabled: $enabled}
+              )
+            }
             """)
         nr_gql_disable_template = Template("""
             mutation {
@@ -189,13 +224,13 @@ def disable_muting_rule(monday_item, muting_df, logger):
                 messages.append(message)
                 continue
             elif event_status not in ['Event Complete', 'All Compliant', 'Done']:
-                message = f'   Patching event for {client_name} {environment} is not complete and has a status of ' \
+                message = f'Patching event for {client_name} {environment} is not complete and has a status of ' \
                           f'{event_status}; skipping event.'
                 logger.info(f'   {message}')
                 messages.append(message)
                 continue
             else:
-                logger.info(f'\n   Event {i + 1}: {event_status} --> {client_name} {environment}.')
+                logger.info(f'\nEvent {i + 1}: {event_status} --> {client_name} {environment}.')
 
                 # Muting rule ID and account corresponding to patching event data
                 muting_rule_ids, nr_account_num = get_muting_rule_info(client_name, environment, muting_df, logger)
@@ -207,7 +242,7 @@ def disable_muting_rule(monday_item, muting_df, logger):
                 if not muting_rule_ids:
                     continue
 
-                logger.info(f'   Checking muting rule status for this event...')
+                logger.info(f'Checking muting rule status for this event...')
 
                 for muting_rule_id in muting_rule_ids:
                     # Query rule to check if it is enabled or disabled
@@ -221,15 +256,43 @@ def disable_muting_rule(monday_item, muting_df, logger):
                     try:
                         # If the 'errors' key exists in the API response, log the error
                         message = f'There was an error querying muting role {muting_rule_id} for {client_name} ' \
-                                  f'{environment}:\n{nr_response["errors"][0]["message"]}'
-                        logger.warning(f'      {message}')
+                                  f'{environment}: {nr_response["errors"][0]["message"]}'
+                        logger.warning(f'{message}')
                         messages.append(message)
                     except KeyError:
-                        # If the 'errors' key does not exist in the API response, disable the rule if necessary
-                        if not nr_response['data']['actor']['account']['alerts']['mutingRule']['enabled']:
+                        is_enabled = nr_response['data']['actor']['account']['alerts']['mutingRule']['enabled']
+                        start = nr_response['data']['actor']['account']['alerts']['mutingRule']['schedule']['startTime']
+
+                        is_early, now_converted = is_before_schedule(muting_rule_id, start, logger)
+
+                        if event_status == 'Event In Progress' and is_early:
+                            # mutate muting rule for earlier start
+                            nr_gql_enable_fmtd = nr_gql_enable_template.substitute(
+                                {'account_id': nr_account_num,
+                                 'rule_id': muting_rule_id,
+                                 'start_time': now_converted,
+                                 'enabled': 'true'})
+                            nr_response = requests.post(nr_endpoint,
+                                                        headers=nr_headers,
+                                                        json={'query': nr_gql_enable_fmtd}).json()
+                            logger.debug(f'New Relic API response:\n{nr_response}')
+
+                            if nr_response['data']['alertsMutingRuleUpdate']['id'] == str(muting_rule_id):
+                                message = f'Muting rule {muting_rule_id} for {client_name} {environment} was ' \
+                                          f'successfully enabled for an early event start.'
+                                logger.info(f'{message}')
+                                messages.append(message)
+                            else:
+                                message = f'There was an error enabling muting rule {muting_rule_id} for ' \
+                                          f'{client_name} {environment}: {nr_response}'
+                                logger.warning(f'{message}')
+                                messages.append(message)
+                                continue
+                            continue
+                        elif event_status == 'Event Complete' and not is_enabled:
                             message = f'Muting rule {muting_rule_id} for {client_name} {environment} is already ' \
                                       f'disabled; no action taken.'
-                            logger.info(f'      {message}')
+                            logger.info(f'{message}')
                             messages.append(message)
                             continue
                         else:
@@ -245,17 +308,17 @@ def disable_muting_rule(monday_item, muting_df, logger):
                             if nr_response['data']['alertsMutingRuleUpdate']['id'] == str(muting_rule_id):
                                 message = f'Muting rule {muting_rule_id} for {client_name} {environment} was ' \
                                           f'successfully disabled.'
-                                logger.info(f'      {message}')
+                                logger.info(f'{message}')
                                 messages.append(message)
                             else:
                                 message = f'There was an error disabling muting rule {muting_rule_id} for ' \
-                                          f'{client_name} {environment}:\n{nr_response}'
-                                logger.warning(f'      {message}')
+                                          f'{client_name} {environment}: {nr_response}'
+                                logger.warning(f'{message}')
                                 messages.append(message)
                                 continue
         return 0, messages
     except Exception as e:
-        message = f'There was a general error:\n   {e}'
+        message = f'There was a general error: {e}'
         logger.warning(message)
         return 1, [message]
 
@@ -283,16 +346,16 @@ def handler(event, context):
         muting_df = get_stored_rule_data(logger)
         monday_item = get_patching_event(event_obj, logger)
         if len(monday_item) > 1:
-            subject = 'Disable muting rule test'
+            subject = 'Event-based muting rule mutation test'
             sns_message = monday_item[1]
         else:
-            process_code, messages = disable_muting_rule(monday_item, muting_df, logger)
+            process_code, messages = change_muting_rule_status(monday_item, muting_df, logger)
 
             if process_code < 1:
                 logger.info('')
-                subject = 'Disable muting rule success'
+                subject = 'Event-based muting rule mutation success'
             else:
-                subject = 'Disable muting rule error'
+                subject = 'Event-based muting rule mutation error'
 
             sns_message = ''
             for message in messages:
