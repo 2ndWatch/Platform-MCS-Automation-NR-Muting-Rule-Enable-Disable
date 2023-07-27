@@ -278,26 +278,26 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                             logger.debug(f'New Relic API response:\n{nr_response}')
 
                             if nr_response['data']['alertsMutingRuleUpdate']['id'] == str(muting_rule_id):
-                                message = f'Muting rule {muting_rule_id} for {client_name} {environment} was ' \
-                                          f'successfully enabled for an early event start.'
+                                message = f'Patching event for {client_name} {environment} has started early. Muting ' \
+                                          f'rule {muting_rule_id} has been successfully enabled.'
                                 logger.info(f'{message}')
                                 messages.append(message)
                             else:
-                                message = f'There was an error enabling muting rule {muting_rule_id} for ' \
-                                          f'{client_name} {environment}: {nr_response}'
+                                message = f'Patching event for {client_name} {environment} has started early. There ' \
+                                          f'was an error enabling muting rule {muting_rule_id}: {nr_response}'
                                 logger.warning(f'{message}')
                                 messages.append(message)
                                 continue
                             continue
                         elif event_status == 'Event In Progress' and not is_early:
-                            message = f'{client_name} {environment} patching event has started after muting rule ' \
+                            message = f'Patching event for {client_name} {environment} has started after muting rule ' \
                                       f'{muting_rule_id} scheduled start; no action taken.'
                             logger.info(f'{message}')
                             messages.append(message)
                             continue
                         elif event_status == 'Event Complete' and not is_enabled:
-                            message = f'Muting rule {muting_rule_id} for {client_name} {environment} is already ' \
-                                      f'disabled; no action taken.'
+                            message = f'Patching event for {client_name} {environment} has completed. Muting rule ' \
+                                      f'{muting_rule_id} is already disabled; no action taken.'
                             logger.info(f'{message}')
                             messages.append(message)
                             continue
@@ -312,13 +312,13 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                             logger.debug(f'New Relic API response:\n{nr_response}')
 
                             if nr_response['data']['alertsMutingRuleUpdate']['id'] == str(muting_rule_id):
-                                message = f'Muting rule {muting_rule_id} for {client_name} {environment} was ' \
-                                          f'successfully disabled.'
+                                message = f'Patching event for {client_name} {environment} has completed. Muting ' \
+                                          f'rule {muting_rule_id} was successfully disabled.'
                                 logger.info(f'{message}')
                                 messages.append(message)
                             else:
-                                message = f'There was an error disabling muting rule {muting_rule_id} for ' \
-                                          f'{client_name} {environment}: {nr_response}'
+                                message = f'Patching event for {client_name} {environment} has completed.  There was ' \
+                                          f'an error disabling muting rule {muting_rule_id}: {nr_response}'
                                 logger.warning(f'{message}')
                                 messages.append(message)
                                 continue
