@@ -223,9 +223,9 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                 logger.info(f'   {message}')
                 messages.append(message)
                 continue
-            elif event_status not in ['Event Complete', 'All Compliant', 'Done']:
-                message = f'Patching event for {client_name} {environment} is not complete and has a status of ' \
-                          f'{event_status}; skipping event.'
+            elif event_status not in ['Event In Progress', 'Event Complete', 'Done']:
+                message = f'Patching event for {client_name} {environment} triggered the workflow but has a ' \
+                          f'mismatched status of {event_status}; skipping event. Please review the logs from this run.'
                 logger.info(f'   {message}')
                 messages.append(message)
                 continue
@@ -284,7 +284,8 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                                 messages.append(message)
                             else:
                                 message = f'Patching event for {client_name} {environment} has started early. There ' \
-                                          f'was an error enabling muting rule {muting_rule_id}: {nr_response}'
+                                          f'was an error enabling muting rule {muting_rule_id}:\n\n{nr_response}\n\n' \
+                                          f'Please review the logs from this run.'
                                 logger.warning(f'{message}')
                                 messages.append(message)
                                 continue
@@ -318,19 +319,21 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                                 messages.append(message)
                             else:
                                 message = f'Patching event for {client_name} {environment} has completed.  There was ' \
-                                          f'an error disabling muting rule {muting_rule_id}: {nr_response}'
+                                          f'an error disabling muting rule {muting_rule_id}:\n\n{nr_response}\n\n' \
+                                          f'Please review the logs from this run.'
                                 logger.warning(f'{message}')
                                 messages.append(message)
                                 continue
                         else:
                             message = f'Something strange happened with {muting_rule_id} for ' \
-                                      f'{event_status} --> {client_name} {environment}: {nr_response}'
+                                      f'{event_status} --> {client_name} {environment}:\n\n{nr_response}\n\n' \
+                                          f'Please review the logs from this run.'
                             logger.warning(f'{message}')
                             messages.append(message)
                             continue
         return 0, messages
     except Exception as e:
-        message = f'There was a general error: {e}'
+        message = f'There was a general error:\n{e}'
         logger.warning(message)
         return 1, [message]
 
