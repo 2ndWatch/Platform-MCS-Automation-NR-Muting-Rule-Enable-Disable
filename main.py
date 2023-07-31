@@ -194,7 +194,9 @@ def change_muting_rule_status(monday_item, muting_df, logger):
                 accountId: $account_id
                 id: $rule_id
                 rule: {schedule: {startTime: "$start_time"}, enabled: $enabled}
-              )
+              ) {
+                  id
+              }
             }
             """)
         nr_gql_disable_template = Template("""
