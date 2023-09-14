@@ -78,13 +78,15 @@ def get_muting_rule_info(client, envir, df, logger):
     except Exception as e:
         error_type = e.__class__.__name__
         if error_type == 'IndexError':
-            logger.warning(f'      {client} does not have muting rule information.')
+            message = f'{client} does not have muting rule information.'
+            logger.warning(message)
         elif error_type == 'ValueError':
-            logger.warning(f'      {client} {envir} does not have a muting rule in place.')
+            message = f'{client} {envir} does not have a muting rule in place.'
+            logger.warning(message)
         else:
-            logger.warning(f'      There was an error extracting muting rule information:\n'
-                           f'      {e.__class__.__name__}: {e}')
-        return None, None
+            message = f'There was an error extracting muting rule information:\n{e.__class__.__name__}: {e}'
+            logger.warning(message)
+        return message, 1
 
 
 def get_patching_event(event, logger):
@@ -236,6 +238,9 @@ def change_muting_rule_status(monday_item, muting_df, logger):
 
                 # Muting rule ID and account corresponding to patching event data
                 muting_rule_ids, nr_account_num = get_muting_rule_info(client_name, environment, muting_df, logger)
+                # In case of error, muting_rule_ids will be a message string
+                if nr_account_num == 1:
+                    return 1, [muting_rule_ids]
 
                 # Used only for testing
                 if client_name == 'Test Project':
